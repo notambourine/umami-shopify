@@ -1,0 +1,16 @@
+{
+  "name": "umami-shopify",
+  "version": "1.0.0",
+  "description": "Copy-paste Shopify custom web pixel that sends customer events to Umami",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0"
+  }
+}
