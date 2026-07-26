@@ -34,8 +34,8 @@ Only data derivable from Shopify's standard pixel events is sent — no DOM scra
 | `collection_viewed` | event | collection |
 | `search_submitted` | event | query |
 | `cart_viewed` | event | value, currency, items |
-| `product_added_to_cart` | event | product, variant, quantity, value |
-| `product_removed_from_cart` | event | product, variant, quantity, value |
+| `product_added_to_cart` | event | product, variant, sku, price, currency, quantity, value |
+| `product_removed_from_cart` | event | product, variant, sku, price, currency, quantity, value |
 | `checkout_started` | event | value, currency, items |
 | `checkout_contact_info_submitted` | event | value, currency, items |
 | `checkout_address_info_submitted` | event | value, currency, items |
@@ -85,7 +85,7 @@ Late-activating tests (exit-intent modals, async tooling) need no special casing
 
 One cross-domain note: when Shop Pay hosts checkout on `shop.app`, the pixel still fires (it loads with the checkout surface, not your theme), so checkout and revenue events keep flowing. Your theme — and therefore `umami:ab` — doesn't run there, which is fine: exposure already happened on the storefront.
 
-**Dedupe when analyzing**: count unique *visitors* on `ab_assigned`, not raw events. Umami dedupes visitors server-side, so a new tab re-firing the exposure doesn't skew the split. Session-scoped exposure also matches Umami's daily-rotating visitor identity — a returning visitor counts as a fresh exposure the same way they count as a fresh visitor.
+**Dedupe when analyzing**: count unique *visitors* on `ab_assigned`, not raw events. Umami dedupes visitors server-side, so a new tab re-firing the exposure doesn't skew the split. Window-scoped exposure also matches Umami's daily-rotating visitor identity — a returning visitor counts as a fresh exposure the same way they count as a fresh visitor.
 
 ### Custom events
 
@@ -101,7 +101,7 @@ and add the name to `CUSTOM_EVENTS` in the pixel:
 const CUSTOM_EVENTS = ['mystore:cta_clicked'];
 ```
 
-The prefix is stripped (`cta_clicked` in Umami) and `customData` becomes the event data, tagged with the `ab_*` variants like everything else. These are *not* deduped — repeats are real actions. The allowlist is deliberate: any visitor can publish custom events from their browser console, so the pixel only forwards names you've opted into. Checkout UI extensions can publish too (`shopify.analytics.publish`) if you need custom events inside checkout.
+The prefix is stripped (`cta_clicked` in Umami) and `customData` becomes the event data. These are *not* deduped — repeats are real actions. The allowlist is deliberate: any visitor can publish custom events from their browser console, so the pixel only forwards names you've opted into. Checkout UI extensions can publish too (`shopify.analytics.publish`) if you need custom events inside checkout.
 
 ## First-party proxy (optional)
 
