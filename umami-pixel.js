@@ -1,7 +1,7 @@
 // Umami Cloud custom pixel for Shopify.
 // Paste into: Shopify admin → Settings → Customer events → Add custom pixel.
 //
-// Shopify custom pixels have no settings UI — edit the two constants below.
+// Shopify custom pixels have no settings UI — edit the constants below.
 // `analytics`, `browser`, and `init` are injected by the pixel sandbox.
 
 // ==== CONFIG ================================================================
@@ -9,6 +9,11 @@ const UMAMI_WEBSITE_ID = 'REPLACE-WITH-YOUR-WEBSITE-ID';
 // Umami Cloud default. For a first-party setup, point this at your own
 // reverse proxy (see proxy/cloudflare-worker.js), e.g. 'https://stats.yourshop.com'.
 const UMAMI_HOST = 'https://cloud.umami.is';
+// Custom events forwarded to Umami, e.g. ['mystore:cta_clicked']. The prefix
+// is stripped for the Umami event name; customData becomes the event data.
+// Allowlist by design — visitors can publish custom events from the console.
+// 'umami:ab' is built in (A/B exposure passthrough) — don't list it here.
+const CUSTOM_EVENTS = [];
 // ============================================================================
 
 // The lax sandbox is an iframe, so window.location is the sandbox URL.
@@ -33,8 +38,8 @@ function basePayload(event) {
 function send(event, name, data) {
   const payload = basePayload(event);
   if (name) payload.name = name;
-  if (data) payload.data = data;
-  fetch(UMAMI_HOST + '/api/send', {
+  if (data && Object.keys(data).length) payload.data = data;
+  return fetch(UMAMI_HOST + '/api/send', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'event', payload }),
@@ -110,11 +115,42 @@ function clean(data) {
   return out;
 }
 
-analytics.subscribe('page_viewed', (event) => send(event));
+// Everything sends in real time. The only sequencing rule: 'ab_assigned'
+// waits for the pageview's request to settle, so exposures always land
+// after page_viewed.
+let pageViewedSent;
+const pageViewed = new Promise((resolve) => {
+  pageViewedSent = resolve;
+});
+
+analytics.subscribe('page_viewed', (event) => {
+  send(event).then(pageViewedSent);
+});
+
+// A/B exposure passthrough: the theme buckets, dedupes, and publishes —
+//   Shopify.analytics.publish('umami:ab', { test: 'hero', variant: '1' });
+// Every publish becomes one 'ab_assigned' event, verbatim.
+analytics.subscribe('umami:ab', async (event) => {
+  const data = event.customData || {};
+  if (!data.test || data.variant === undefined || data.variant === null) return;
+  await pageViewed;
+  send(event, 'ab_assigned', {
+    test: String(data.test),
+    variant: String(data.variant),
+  });
+});
 
 for (const name of Object.keys(extractors)) {
   analytics.subscribe(name, (event) =>
     send(event, name, clean(extractors[name](event.data || {}))),
+  );
+}
+
+// Theme-published custom events (Shopify.analytics.publish) — forwarded
+// verbatim, no dedupe: repeats are real actions.
+for (const fullName of CUSTOM_EVENTS) {
+  analytics.subscribe(fullName, (event) =>
+    send(event, fullName.split(':').pop(), clean(event.customData || {})),
   );
 }
 

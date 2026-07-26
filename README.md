@@ -42,8 +42,66 @@ Only data derivable from Shopify's standard pixel events is sent — no DOM scra
 | `checkout_shipping_info_submitted` | event | value, currency, items |
 | `payment_info_submitted` | event | value, currency, items |
 | `checkout_completed` | event | **revenue**, **currency**, items, order |
+| `ab_assigned` (from `umami:ab`) | event | test, variant |
+| your `CUSTOM_EVENTS` | event | the published `customData` |
 
 `checkout_completed` sends `revenue` + `currency`, the property names Umami's [revenue report](https://umami.is/docs/reports) reads. It's also deduped via `localStorage` on the checkout token, since the thank-you page can replay the event on refresh.
+
+## A/B testing
+
+The pixel can't run your test — the sandbox has no DOM access — so bucketing, rendering, *and dedupe* live in your theme JS. The pixel is a passthrough with one integration point: publish an exposure whenever you want one counted.
+
+```js
+Shopify.analytics.publish('umami:ab', { test: 'hero', variant: '1' });
+```
+
+Every publish becomes one `ab_assigned` event (`{test: 'hero', variant: '1'}`), verbatim — the pixel never dedupes or synthesizes exposures. All events ship in real time; the one ordering rule is that `ab_assigned` waits for the pageview's request to settle, so exposures always land after `page_viewed` (assignment typically happens around `window.load`, well after the pageview fires).
+
+The lifecycle, assuming a small bucketing helper in the theme (here `window.ntb('hero')`: buckets, dedupes at the window level, returns `0` or `1` for the theme to render against, publishes):
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Theme as Theme JS (ntb microlib)
+  participant Pixel as Custom pixel (sandbox)
+  participant Umami
+
+  Pixel->>Umami: page_viewed — sent immediately
+  Note over Theme: window.load — window.ntb('hero') buckets, dedupes, renders
+  Theme->>Pixel: Shopify.analytics.publish('umami:ab', {test, variant})
+  Pixel->>Umami: ab_assigned {test, variant} — one per publish, after the pageview settles
+
+  loop buyer journey
+    Pixel->>Umami: product, cart, checkout events — real time
+  end
+
+  Note over Pixel: checkout runs on any domain (incl. shop.app) — the pixel loads with the checkout surface, not the theme
+  Pixel->>Umami: checkout_completed + revenue — deduped by checkout token
+
+  Note over Umami: readout — ab_assigned counts by variant vs funnels into checkout_completed
+```
+
+Late-activating tests (exit-intent modals, async tooling) need no special casing — publish at activation and the exposure fires then. `umami:ab` is reserved for this — don't add it to `CUSTOM_EVENTS`.
+
+One cross-domain note: when Shop Pay hosts checkout on `shop.app`, the pixel still fires (it loads with the checkout surface, not your theme), so checkout and revenue events keep flowing. Your theme — and therefore `umami:ab` — doesn't run there, which is fine: exposure already happened on the storefront.
+
+**Dedupe when analyzing**: count unique *visitors* on `ab_assigned`, not raw events. Umami dedupes visitors server-side, so a new tab re-firing the exposure doesn't skew the split. Session-scoped exposure also matches Umami's daily-rotating visitor identity — a returning visitor counts as a fresh exposure the same way they count as a fresh visitor.
+
+### Custom events
+
+For anything else (funnel steps, CTA clicks), publish from theme JS or a theme app extension:
+
+```js
+Shopify.analytics.publish('mystore:cta_clicked', { placement: 'hero' });
+```
+
+and add the name to `CUSTOM_EVENTS` in the pixel:
+
+```js
+const CUSTOM_EVENTS = ['mystore:cta_clicked'];
+```
+
+The prefix is stripped (`cta_clicked` in Umami) and `customData` becomes the event data, tagged with the `ab_*` variants like everything else. These are *not* deduped — repeats are real actions. The allowlist is deliberate: any visitor can publish custom events from their browser console, so the pixel only forwards names you've opted into. Checkout UI extensions can publish too (`shopify.analytics.publish`) if you need custom events inside checkout.
 
 ## First-party proxy (optional)
 
