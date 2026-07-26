@@ -57,17 +57,17 @@ Shopify.analytics.publish('umami:ab', { test: 'hero', variant: '1' });
 
 Every publish becomes one `ab_assigned` event (`{test: 'hero', variant: '1'}`), verbatim — the pixel never dedupes or synthesizes exposures. All events ship in real time; the one ordering rule is that `ab_assigned` waits for the pageview's request to settle, so exposures always land after `page_viewed` (assignment typically happens around `window.load`, well after the pageview fires).
 
-The lifecycle, assuming a small bucketing helper in the theme (here `window.ntb('hero')`: buckets, dedupes at the window level, returns `0` or `1` for the theme to render against, publishes):
+The lifecycle, assuming a small bucketing helper in the theme (here `window.notamb('hero')`: buckets, dedupes at the window level, returns `0` or `1` for the theme to render against, publishes):
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Theme as Theme JS (ntb microlib)
+  participant Theme as Theme JS (notamb microlib)
   participant Pixel as Custom pixel (sandbox)
   participant Umami
 
   Pixel->>Umami: page_viewed — sent immediately
-  Note over Theme: window.load — window.ntb('hero') buckets, dedupes, renders
+  Note over Theme: window.load — window.notamb('hero') buckets, dedupes, renders
   Theme->>Pixel: Shopify.analytics.publish('umami:ab', {test, variant})
   Pixel->>Umami: ab_assigned {test, variant} — one per publish, after the pageview settles
 
