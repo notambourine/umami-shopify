@@ -2,3 +2,6 @@
 /.claude/ @tomfuertes
 /.vscode/ @tomfuertes
 /.github/ @tomfuertes
+.agents/ @tomfuertes
+package.json @tomfuertes
+package-lock.json @tomfuertes
